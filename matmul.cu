@@ -15,7 +15,6 @@ __global__ void matmul_naive(const float *A, const float *B, float *out, int row
         }
         out[idx] = sum;
     }
-    __syncthreads();
 }
 
 // initializes the matrix with random values. (add to ./utils.cpp)
