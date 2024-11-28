@@ -3,6 +3,9 @@
 
 #define TILE_SIZE 32 // tile = 32x32 = 1024
 
+__device__ void load_smem();
+
+
 // A=(M,k), B=(k,N)
 __global__ void gemm_smem_cache_blocking_k(const float *A, const float *B, float *C, size_t m, size_t n, size_t k,) {
     // allocate shared memory
@@ -23,18 +26,20 @@ __global__ void gemm_smem_cache_blocking_k(const float *A, const float *B, float
     //for (int tileix = 0; tileix < k/TILE_SIZE; tileix++) { // loops for the number of tiles in the row or the col
     for (int i = 0; i < k; i++) {
         // fill shared (same for storing in C naive matmul)
-        A_s[c_row * TILE_SIZE + c_col] = A[ptr_A * tileix ]
-        B_s[c_row * TILE_SIZE + c_col] = 
+        A_s[c_row * TILE_SIZE + c_col] = ptr_A[c_row * k + c_col];
+        B_s[c_row * TILE_SIZE + c_col] = ptr_B[c_row * k + c_col];
+
+        __syncthreads();
+
+
+        // move pointers to the next tile
+
     }
 }
 
 // mapping thread to gmem = threadIdx.y * blockDim.x + threadIdx.x;
 // mapping block  to gmem = blockIdx.y * gridDim.x + blockIdx.x;
 
-for (int i = 0; i < k; i++) {
-    sum +=
-}
-C[row * k + col] = sum
 
 /*
 - assing a thread block to a C_tile (resulting tile)
