@@ -2,6 +2,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <assert.h>
+
+#define ROW 3
+#define COL 2
 
 void init_randf(float *data, const int size) {
     time_t t;
@@ -12,40 +16,50 @@ void init_randf(float *data, const int size) {
 }
 
 void init_2(float *data, const int size) {
-    srand((unsigned int)time(NULL));
+    srand((unsigned int) time(NULL));
     for (int i = 0; i < size; i++) {
-        data[i] = ((float)rand()/(float)RAND_MAX) * 10;
+        data[i] = ((float)rand()/RAND_MAX);//(float)rand());
     }
+}
+
+void print_data(float *data, int n) {
+    printf("[");
+    for (int i = 0; i < n; i++) {
+        printf("%.4f, ", data[i]);
+    }
+    printf("]");
 }
 
 void print_matrix(float *data, int n) {
     printf("[");
+    int j = 0;
     for (int i = 0; i < n; i++) {
-        printf("%f, ", data[i]);
+        if (j == COL) {
+            //printf("\n");
+            j = 0;
+        }
+        printf("%.4f, ", data[i]);
+        j++;
     }
-    printf("]\n");
+    printf("]\n\n");
 }
 
-x, x,       y, y, y
-x, x,   X   y, y, y
-x, x, 
-
+// cpu matmul
 void matmul_h(const float *A, const float *B, float *C,
               const size_t m, const size_t n, const size_t k) {
     float sum = 0.0f;
     for (int i = 0; i < m; i++) {
         for (int j = 0; j < n; j++) {
             for (int ki = 0; ki < k; ki++) {
-                sum += A[i * n + ki] * B[ki * m + i]; // something like this
+                sum += A[i * n + ki] * B[ki * m + j];
             }
-            C[]
+            // compare the result with the kernels
+            //assert(sum == C[i*m+j]);
+            C[i * m + j] = sum;
         }
     }
-
 }
 
-#define ROW 3
-#define COL 3
 int main(int argc, char **argv) {
     // matrix size
     const int n = ROW*COL;
@@ -59,8 +73,13 @@ int main(int argc, char **argv) {
     init_2(A_h, n);
     init_2(B_h, n);
 
-    print_matrix(A_h, n);
-    print_matrix(B_h, n);
+    matmul_h(A_h, B_h, C_h, ROW, COL, n);
+
+    print_data(A_h, n);
+    // print matrix
+    //print_matrix(A_h, n);
+    //print_matrix(B_h, n);
+    //print_matrix(C_h, n);
 
 
 
@@ -68,4 +87,6 @@ int main(int argc, char **argv) {
     free(A_h);
     free(B_h);
     free(C_h);
+
+    return 0;
 }
