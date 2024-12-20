@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <assert.h>
+#include <cuda_runtime.h>
 
 #define ROW 5 
 #define COL 5
@@ -15,12 +16,6 @@ void init_randf(float *data, const int size) {
     }
 }
 
-void init_2(float *data, const int size) {
-    srand((unsigned int) time(NULL));
-    for (int i = 0; i < size; i++) {
-        data[i] = ((float)rand()/RAND_MAX);//(float)rand());
-    }
-}
 
 void print_data(float *data, int n) {
     printf("[");
@@ -61,6 +56,9 @@ void matmul_h(const float *A, const float *B, float *C,
 }
 
 int main(int argc, char **argv) {
+    // set device
+    int dev = 0;
+    cudaSetDevice(dev);
     // matrix size
     const int n = ROW*COL;
     const size_t bytes = n * sizeof(float);
@@ -71,8 +69,8 @@ int main(int argc, char **argv) {
     float *gpuRef = (float*)malloc(bytes);
 
     // populate the allocated space
-    init_2(h_A, n);
-    init_2(h_B, n);
+    init_randf(h_A, n);
+    init_randf(h_B, n);
 
     matmul_h(h_A, h_B, h_C, ROW, COL, n);
 
@@ -95,7 +93,7 @@ int main(int argc, char **argv) {
     // invoke kernel
 
     // transfer kernel result data back to host
-    cudaMemcpy(gpuRef, d_C, bytes, cudaMemcpyDeviceToHost);
+//    cudaMemcpy(gpuRef, d_C, bytes, cudaMemcpyDeviceToHost);
 
     // free device memory
     cudaFree(d_A);
@@ -104,9 +102,9 @@ int main(int argc, char **argv) {
 
 
     // frees host allocated memory
-    free(A_h);
-    free(B_h);
-    free(C_h);
+    free(h_A);
+    free(h_B);
+    free(h_C);
 
     return 0;
 }
