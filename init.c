@@ -4,8 +4,8 @@
 #include <time.h>
 #include <assert.h>
 
-#define ROW 3
-#define COL 2
+#define ROW 5 
+#define COL 5
 
 void init_randf(float *data, const int size) {
     time_t t;
@@ -27,7 +27,7 @@ void print_data(float *data, int n) {
     for (int i = 0; i < n; i++) {
         printf("%.4f, ", data[i]);
     }
-    printf("]");
+    printf("]\n");
 }
 
 void print_matrix(float *data, int n) {
@@ -35,7 +35,7 @@ void print_matrix(float *data, int n) {
     int j = 0;
     for (int i = 0; i < n; i++) {
         if (j == COL) {
-            //printf("\n");
+            printf("\n");
             j = 0;
         }
         printf("%.4f, ", data[i]);
@@ -64,23 +64,43 @@ int main(int argc, char **argv) {
     // matrix size
     const int n = ROW*COL;
     const size_t bytes = n * sizeof(float);
-    // allocating memory in host for the matrices
-    float *A_h = (float*)malloc(bytes);
-    float *B_h = (float*)malloc(bytes);
-    float *C_h = (float*)malloc(bytes); // need to change this size
+    // allocate host memory for the matrices
+    float *h_A = (float*)malloc(bytes);
+    float *h_B = (float*)malloc(bytes);
+    float *h_C = (float*)malloc(bytes); // need to change this size
+    float *gpuRef = (float*)malloc(bytes);
 
     // populate the allocated space
-    init_2(A_h, n);
-    init_2(B_h, n);
+    init_2(h_A, n);
+    init_2(h_B, n);
 
-    matmul_h(A_h, B_h, C_h, ROW, COL, n);
+    matmul_h(h_A, h_B, h_C, ROW, COL, n);
 
-    print_data(A_h, n);
+    print_data(h_A, n);
     // print matrix
-    //print_matrix(A_h, n);
+    print_matrix(h_A, n);
     //print_matrix(B_h, n);
     //print_matrix(C_h, n);
 
+    // allocate device memory for the matrices
+    float *d_A, *d_B, *d_C;
+    cudaMalloc((float**)&d_A, bytes);
+    cudaMalloc((float**)&d_B, bytes);
+    cudaMalloc((float**)&d_C, bytes);
+
+    // transfer data to gpu
+    cudaMemcpy(d_A, h_A, bytes, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B, h_B, bytes, cudaMemcpyHostToDevice);
+
+    // invoke kernel
+
+    // transfer kernel result data back to host
+    cudaMemcpy(gpuRef, d_C, bytes, cudaMemcpyDeviceToHost);
+
+    // free device memory
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_C);
 
 
     // frees host allocated memory
