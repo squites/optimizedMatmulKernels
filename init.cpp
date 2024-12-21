@@ -4,9 +4,13 @@
 #include <time.h>
 #include <assert.h>
 #include <cuda_runtime.h>
+#include "kernel_1.cuh"
 
+// working only with square matrices first
 #define ROW 5 
 #define COL 5
+
+#define BLOCK_SIZE 16
 
 void init_randf(float *data, const int size) {
     time_t t;
@@ -15,7 +19,6 @@ void init_randf(float *data, const int size) {
         data[i] = (float)(rand() & 0xFF)/10.0f;
     }
 }
-
 
 void print_data(float *data, int n) {
     printf("[");
@@ -55,45 +58,62 @@ void matmul_h(const float *A, const float *B, float *C,
     }
 }
 
+void verify(float *h_data, float *d_data, int N) {
+    for (int i = 0; i < N; i++) {
+        if (h_data[i] != d_data[i]) {
+            printf("Error! The results don't match.\n");
+            return 1;
+        }
+    }
+    printf("Results match!");
+}
+
 int main(int argc, char **argv) {
     // set device
     int dev = 0;
     cudaSetDevice(dev);
     // matrix size
     const int n = ROW*COL;
-    const size_t bytes = n * sizeof(float);
+    const size_t size = n * sizeof(float);
     // allocate host memory for the matrices
-    float *h_A = (float*)malloc(bytes);
-    float *h_B = (float*)malloc(bytes);
-    float *h_C = (float*)malloc(bytes); // need to change this size
-    float *gpuRef = (float*)malloc(bytes);
+    float *h_A = (float*)malloc(size);
+    float *h_B = (float*)malloc(size);
+    float *h_C = (float*)malloc(size); // need to change this size
+    float *gpuRef = (float*)malloc(size);
 
-    // populate the allocated space
+    // initialize matrices 
     init_randf(h_A, n);
     init_randf(h_B, n);
 
     matmul_h(h_A, h_B, h_C, ROW, COL, n);
 
-    print_data(h_A, n);
+    //print_data(h_A, n);
     // print matrix
-    print_matrix(h_A, n);
+    //print_matrix(h_A, n);
     //print_matrix(B_h, n);
     //print_matrix(C_h, n);
 
     // allocate device memory for the matrices
     float *d_A, *d_B, *d_C;
-    cudaMalloc((float**)&d_A, bytes);
-    cudaMalloc((float**)&d_B, bytes);
-    cudaMalloc((float**)&d_C, bytes);
+    cudaMalloc((float**)&d_A, size);
+    cudaMalloc((float**)&d_B, size);
+    cudaMalloc((float**)&d_C, size);
 
-    // transfer data to gpu
-    cudaMemcpy(d_A, h_A, bytes, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_B, h_B, bytes, cudaMemcpyHostToDevice);
+    // transfer data from host to device
+    cudaMemcpy(d_A, h_A, size, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B, h_B, size, cudaMemcpyHostToDevice);
 
-    // invoke kernel
+    // invoke kernel (write a kernel runner after)
+    dim3 const blockDim(BLOCK_SIZE, BLOCK_SIZE);
+    dim3 const gridDim(BLOCK_SIZE/blockDim.x, BLOCK_SIZE/blockDim.y);
+    gemm_matmul_naive_k<<<gridDim, blockDim>>>(d_A, d_B, d_C, ROWS, COLS, n);
 
-    // transfer kernel result data back to host
-//    cudaMemcpy(gpuRef, d_C, bytes, cudaMemcpyDeviceToHost);
+    // transfer result back to host
+    cudaMemcpy(gpuRef, d_C, size, cudaMemcpyDeviceToHost);
+
+    // verify result
+    verify(h_C, gpuRef, n);
+
 
     // free device memory
     cudaFree(d_A);
