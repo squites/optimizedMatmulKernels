@@ -1,7 +1,8 @@
 #include <iostream>
 #include <stdio.h>
 
-// from blog simoeh
+// from blog simoeh 
+/*
 __global__ void gmem_coalesce_2_k(const float *A, const float *B, float *C, int width) {
     const int x = blockIdx.x * BLOCKSIZE + (threadIdx.x / BLOCKSIZE);
     const int y = blockIdx.y * BLOCKSIZE + (threadIdx.x % BLOCKSIZE);
@@ -10,9 +11,9 @@ __global__ void gmem_coalesce_2_k(const float *A, const float *B, float *C, int 
         for (int i = 0; i < width; i++) { 
             sum += A[x * width + i] * B[i * width + y];
         }
-        C[x * width + y] = sum
+        C[x * width + y] = sum;
     }
-}
+}*/
 
 // from leimao blog
 __global__ void gemm_coalesced_v2_k(const float *A, const float *B, float *C, size_t m, size_t n, size_t k) {
@@ -33,7 +34,7 @@ __global__ void gemm_coalesced_k(const float *A, const float *B, float *C, size_
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     if (row < m && col < n) {
-        float pValue = 0.0f;
+        float sum = 0.0f;
         for (int i = 0; i < k; i++) {
             sum += A[row * k + i] * B[k * n + col];
         }

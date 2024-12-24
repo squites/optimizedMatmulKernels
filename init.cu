@@ -4,26 +4,14 @@
 #include <time.h>
 #include <assert.h>
 #include <cuda_runtime.h>
-#include "kernel_1.cuh"
+//#include "kernel_1.cuh"
+#include "caller.cuh"
 
 // working only with square matrices first
-#define ROW 3 
-#define COL 3
+#define ROW 4//2048 
+#define COL 4//2048
 // CUDA dims
-#define BLOCK_SIZE 3
-
-/*
-__global__ void gemm_matmul_naive_k(const float *A, const float *B, float *C, int rows, int cols, int K) {
-	unsigned int ix = blockIdx.x * blockDim.x + threadIdx.x;
-    unsigned int iy = blockIdx.y * blockDim.y + threadIdx.y;
-	if (ix < rows && iy < cols) {
-		float sum = 0.0f;
-	        for (int i = 0; i < K; i++) {
-	        	sum += A[ix * K + i] * B[i * cols + iy];
-		}
-		C[ix * cols + iy] = sum;
-	}
-}*/
+#define BLOCK_SIZE 4//2048
 
 void init_randf(float *data, const int size) {
     time_t t;
@@ -33,18 +21,17 @@ void init_randf(float *data, const int size) {
     }
 }
 
-void init_float(float *data, int m, int n, float min, float max) {
-    static int is_seeded = 0;
-    if (!is_seeded) {
+void randfloat(float *data, const int size, float min, float max) {
+    static int seed_init = 0;
+    if (!seed_init) {
         srand((unsigned int)time(NULL));
-        is_seeded = 1;
+        seed_init = 1;
     }
-    for (int i = 0; i < m; i++) {
-        for (int j = 0; j < n; j++) {
-            data[i * n + j] = min + ((float)rand() / (float)RAND_MAX) * (max - min);
-        }
+
+    for (int i = 0; i < size; i++) {
+        data[i] = min + (float)rand() / (float)(RAND_MAX / (max - min));
     }
-}
+} 
 
 void print_data(float *data, int n) {
     for (int i = 0; i < n; i++) {
@@ -70,7 +57,6 @@ void print_matrix(float *data, int n) {
 // cpu matmul
 void matmul_h(float *A, float *B, float *C,
               int m, int n, int K) {
-    //float sum = 0.0f;
     for (int i = 0; i < m; i++) {
         for (int j = 0; j < n; j++) {
             float sum = 0.0f;
@@ -78,11 +64,10 @@ void matmul_h(float *A, float *B, float *C,
                 sum += A[i * n + k] * B[k * m + j];
             }
             C[i * m + j] = sum;
-            //printf("sum: %.2f\n", sum);
         }
     }
 }
-
+/*
 #define ABS_TOL 1e-5
 #define REL_TOL 1e-3
 void verify(float *h_data, float *d_data, int N) {
@@ -97,9 +82,9 @@ void verify(float *h_data, float *d_data, int N) {
     }
     printf("Results match!\n");
 }
-
+*/
 int main(int argc, char **argv) {
-    // set device
+    // set device (needed?)
     int dev = 0;
     cudaSetDevice(dev);
     // matrix size
@@ -109,27 +94,18 @@ int main(int argc, char **argv) {
     float *h_A = (float*)malloc(size);
     float *h_B = (float*)malloc(size);
     float *h_C = (float*)malloc(size); 
-    float *gpuRef = (float*)malloc(size);
+    float *gpuResult = (float*)malloc(size);
 
     // initialize matrices 
-//    init_float(h_A, ROW, COL, -150, 150);
- //   init_float(h_B, ROW, COL, -150, 150);
-    init_randf(h_A, n);
-    init_randf(h_B, n);
+    randfloat(h_A, n, -50, 50);
+    randfloat(h_B, n, -50, 50);
 
     matmul_h(h_A, h_B, h_C, ROW, COL, COL);
-    //mat(h_A, h_B, h_C, ROW, COL, n);
 
-    printf("h_A: ");
-    print_data(h_A, n);
-    printf("h_B: ");
-    print_data(h_B, n);
-    printf("h_C: ");
-    print_data(h_C, n);
-    // print matrix
-    //print_matrix(h_A, n);
-    //print_matrix(B_h, n);
-    //print_matrix(C_h, n);
+    // debugging
+    printf("h_A: "); print_data(h_A, n);
+    printf("h_B: "); print_data(h_B, n);
+    printf("h_C: "); print_data(h_C, n);
 
     // allocate device memory for the matrices
     float *d_A, *d_B, *d_C;
@@ -147,19 +123,20 @@ int main(int argc, char **argv) {
     gemm_matmul_naive_k<<<gridDim, blockDim>>>(d_A, d_B, d_C, ROW, COL, COL); // the last "COL" is to represent the width
 
     // transfer result back to host
-    cudaMemcpy(gpuRef, d_C, size, cudaMemcpyDeviceToHost);
+    cudaMemcpy(gpuResult, d_C, size, cudaMemcpyDeviceToHost);
+    printf("kernel 1: "); print_data(gpuResult, n);
 
-    printf("gpuRef: ");
-    print_data(gpuRef, n);
-
+    gemm_coalesced_k<<<gridDim, blockDim>>>(d_A, d_B, d_C, ROW, COL, COL);
+    cudaMemcpy(gpuResult, d_C, size, cudaMemcpyDeviceToHost);
+    printf("kernel 2: "); print_data(gpuResult, n);
+    
     // verify result
-    verify(h_C, gpuRef, n);
+    //verify(h_C, gpuResult, n);
 
     // free device memory
     cudaFree(d_A);
     cudaFree(d_B);
     cudaFree(d_C);
-
 
     // frees host allocated memory
     free(h_A);
