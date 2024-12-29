@@ -53,6 +53,52 @@ __global__ void gemm_smem_cache_blocking_k(const float *A, const float *B, float
 
     }
 }
+// each thread assigned to one element of C
+// 1 - load chunk of A and chunk of B from GMEM to SMEM
+// 2 - work of these chunks
+// move the chunks along the row and column
+
+#define CHUNK_SIZE 32
+__global__ void gemm_smem_cache_blocking_v2_k(const float *A, const float *B, float *C, 
+                                              size_t m, size_t n, size_t k) {
+    // allocate shared memory
+    __shared__ float A_shared[CHUNK_SIZE * CHUNK_SIZE]; // 32x32
+    __shared__ float B_shared[CHUNK_SIZE * CHUNK_SIZE];
+    // C thread mapping
+    int c_row = blockIdx.y * blockDim.y + threadIdx.y;
+    int c_col = blockIdx.x * blockDim.x + threadIdx.x;
+    // C tile mapping
+    int trow = blockIdx.y;
+    int tcol = blockIdx.x;
+
+    // initializing pointers to the start of the first chunk
+    float *A_ptr = trow * k * CHUNK_SIZE; // points to 1st element of 1st chunk on each tile row
+    float *B_ptr = tcol * CHUNK_SIZE;     // points to 1st element of 1st chunk on each tile column
+    float *C_ptr = trow * (n * CHUNK_SIZE) + tcol * CHUNK_SIZE;
+    // row_idx * width: pula para o começo da linha correspondente com o indice.
+    // + CHUNKSIZE: chega no primeiro elemento to próximo chunk na mesma linha.
+
+    int nchunks = blockDim.y/CHUNK_SIZE;
+    // loop can be iterating over tiles or over elements.
+    for (int bi = 0; bi < nchunks; bi++) {
+        for (int ki = 0; ki < CHUNK_SIZE; ki++) { // need to check this loop
+            // load A and B chunks into shared memory
+            A_shared[threadIdx.y * CHUNK_SIZE + threadIdx.x] = A_ptr[c_row * k + c_col];
+            B_shared[threadIdx.y * CHUNK_SIZE + threadIdx.x] = B_ptr[c_row * n + c_col];
+        }
+        __syncthreads();
+    }
+
+}
+
+// OBS (IMPORTANTE): cada thread block, é responsável por um TILE da matrix C. Para calcular esse C tile, dentro de  
+// um loop, o thread block vai carregar a shared memory com um tile de A e um tile de B, e computar o tile C 
+// parcialmente. Depois, na próxima iteração, o MESMO thread block, vai carregar a shared memory com o próximo tile
+// de A o próximo tile de B, e adicionar o novo resultado ao resultado parcial anterior. Repete isso para todos os 
+// tiles daquela tilerow e daquela tilecol.
+// Para computar cada resultado parcial do tile C, em cada iteração, o thread block computa uma matmul entre 
+// o tile A e o tile B. Com isso ele tem um resultado parcial do tile C. faz isso até acabar os tiles daquela tilerow
+// e daquela tilecol.
 
 // mapping thread to gmem = threadIdx.y * blockDim.x + threadIdx.x;
 // mapping block  to gmem = blockIdx.y * gridDim.x + blockIdx.x;
