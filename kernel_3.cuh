@@ -94,7 +94,11 @@ __global__ void gemm_smem_cache_blocking_v2_k(float *A, float *B, float *C,
         for (int i = 0; i < CHUNK_SIZE; i++) { // this loops to each 
             sum += A_shared[c_row * CHUNK_SIZE + i] * B_shared[i * n + c_col];
         }
+        //printf("sum: %.2f, ", sum);
         __syncthreads();
+
+        // move pointers
+        // ...
     }
     C_ptr[c_row * n + c_col] = sum;
 
