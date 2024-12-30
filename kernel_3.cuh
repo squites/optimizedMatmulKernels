@@ -59,9 +59,8 @@ __global__ void gemm_smem_cache_blocking_k(const float *A, const float *B, float
 // move the chunks along the row and column
 */
 
-
 #define CHUNK_SIZE 32
-__global__ void gemm_smem_cache_blocking_v2_k(const float *A, const float *B, float *C, 
+__global__ void gemm_smem_cache_blocking_v2_k(float *A, float *B, float *C, 
                                               size_t m, size_t n, size_t k) {
     // allocate shared memory
     __shared__ float A_shared[CHUNK_SIZE * CHUNK_SIZE]; // 32x32
@@ -74,9 +73,9 @@ __global__ void gemm_smem_cache_blocking_v2_k(const float *A, const float *B, fl
     int tcol = blockIdx.x;
 
     // initializing pointers to the start of the first chunk
-    float *A_ptr = trow * k * CHUNK_SIZE; // points to 1st element of 1st chunk on each tile row
-    float *B_ptr = tcol * CHUNK_SIZE;     // points to 1st element of 1st chunk on each tile column
-    float *C_ptr = trow * (n * CHUNK_SIZE) + tcol * CHUNK_SIZE;
+    float *A_ptr = A + trow * k * CHUNK_SIZE; // points to 1st element of 1st chunk on each tile row
+    float *B_ptr = B + tcol * CHUNK_SIZE;     // points to 1st element of 1st chunk on each tile column
+    float *C_ptr = C + trow * (n * CHUNK_SIZE) + tcol * CHUNK_SIZE;
     // row_idx * width: pula para o começo da linha correspondente com o indice.
     // + CHUNKSIZE: chega no primeiro elemento to próximo chunk na mesma linha.
 
@@ -92,12 +91,12 @@ __global__ void gemm_smem_cache_blocking_v2_k(const float *A, const float *B, fl
 
         // barrier?
         // calculate dot-product (at this point, all threads of that block loaded the corresponded element of that chunk into shared, so we can already do matmul on this tile)
-        for (int i = 0; i < CHUNK_SIZE*CHUNK_SIZE; i++) { // should be CHUNK_SIZE*CHUNK_SIZE ?
-            sum += A_shared[c_row * CHUNK_SIZE + i] * B_shared[i * n + c_col]
+        for (int i = 0; i < CHUNK_SIZE; i++) { // this loops to each 
+            sum += A_shared[c_row * CHUNK_SIZE + i] * B_shared[i * n + c_col];
         }
         __syncthreads();
-        C_ptr[c_row * n + c_col] = sum;
     }
+    C_ptr[c_row * n + c_col] = sum;
 
 }
 
@@ -122,7 +121,14 @@ __global__ void gemm_smem_cache_blocking_v2_k(const float *A, const float *B, fl
 // Devemos pensar que o kernel roda em uma thread, então precisamos pensar como uma thread. Dessa forma, no loop só 
 // é feito um load de A e um load de B em cada iteração, porém, cada thread do block estará fazendo a mesma coisa
 // porém de coordenadas diferentes!
-
+//
+// OBS 3 (IMPORTANTE): o segundo loop calcula o elemento parcial de cada respectiva thread. Para isso, esse loop
+// calcula um dotproduct entre a respectiva linha do tile_i de A e a respectiva coluna do tile_i de B, logo, i < CHUNK_SIZE.
+// Fazendo isso, a variável "sum" terá o resultado de apenas 1 elemento do tile C. Lembrando que na multiplicação
+// de matrizes, para calcular um elemento i de C, é necessário fazer um dotproduct entre a linha correspondente com
+// a coluna correspondente. É isso que está sendo feito aqui, "sum" representa o resultado parcial 
+//
+//
 // mapping thread to gmem = threadIdx.y * blockDim.x + threadIdx.x;
 // mapping block  to gmem = blockIdx.y * gridDim.x + blockIdx.x;
 

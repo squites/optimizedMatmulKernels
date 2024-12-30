@@ -8,26 +8,18 @@
 #include "caller.cuh"
 
 // working only with square matrices first
-#define ROW 4//2048 
-#define COL 4//2048
+#define ROW 1024//8//2048 
+#define COL 1024//8//2048
 // CUDA dims
-#define BLOCK_SIZE 4//2048
+#define BLOCK_SIZE 32//2048
 
-void init_randf(float *data, const int size) {
-    time_t t;
-    srand((unsigned)time(&t));
-    for (int i = 0; i < size; i++) {
-        data[i] = (float)(rand() & 0xFF)/10.0f;
-    }
-}
-
+// generate random values and fill the matrix
 void randfloat(float *data, const int size, float min, float max) {
     static int seed_init = 0;
     if (!seed_init) {
         srand((unsigned int)time(NULL));
         seed_init = 1;
     }
-
     for (int i = 0; i < size; i++) {
         data[i] = min + (float)rand() / (float)(RAND_MAX / (max - min));
     }
@@ -55,8 +47,7 @@ void print_matrix(float *data, int n) {
 }
 
 // cpu matmul
-void matmul_h(float *A, float *B, float *C,
-              int m, int n, int K) {
+void matmul_h(float *A, float *B, float *C, int m, int n, int K) {
     for (int i = 0; i < m; i++) {
         for (int j = 0; j < n; j++) {
             float sum = 0.0f;
@@ -83,6 +74,7 @@ void verify(float *h_data, float *d_data, int N) {
     printf("Results match!\n");
 }
 */
+
 int main(int argc, char **argv) {
     // set device (needed?)
     int dev = 0;
@@ -103,9 +95,9 @@ int main(int argc, char **argv) {
     matmul_h(h_A, h_B, h_C, ROW, COL, COL);
 
     // debugging
-    printf("h_A: "); print_data(h_A, n);
-    printf("h_B: "); print_data(h_B, n);
-    printf("h_C: "); print_data(h_C, n);
+    printf("h_A: "); //print_data(h_A, n);
+    printf("h_B: "); //print_data(h_B, n);
+    printf("h_C: "); //print_data(h_C, n);
 
     // allocate device memory for the matrices
     float *d_A, *d_B, *d_C;
@@ -120,16 +112,24 @@ int main(int argc, char **argv) {
     // invoke kernel (write a kernel runner after)
     dim3 const blockDim(BLOCK_SIZE, BLOCK_SIZE);
     dim3 const gridDim(BLOCK_SIZE/blockDim.x, BLOCK_SIZE/blockDim.y);
+    
+    // kernel 1
     gemm_matmul_naive_k<<<gridDim, blockDim>>>(d_A, d_B, d_C, ROW, COL, COL); // the last "COL" is to represent the width
-
-    // transfer result back to host
-    cudaMemcpy(gpuResult, d_C, size, cudaMemcpyDeviceToHost);
+    cudaMemcpy(gpuResult, d_C, size, cudaMemcpyDeviceToHost); // transfer result back to host
     printf("kernel 1: "); print_data(gpuResult, n);
 
-    gemm_coalesced_k<<<gridDim, blockDim>>>(d_A, d_B, d_C, ROW, COL, COL);
+    // kernel 2
+    //gemm_coalesced_k<<<gridDim, blockDim>>>(d_A, d_B, d_C, ROW, COL, COL);
+    //cudaMemcpy(gpuResult, d_C, size, cudaMemcpyDeviceToHost);
+    //printf("kernel 2: "); print_data(gpuResult, n);
+
+    dim3 const blockDim2(CHUNK_SIZE, CHUNK_SIZE);
+    dim3 const gridDim2(CHUNK_SIZE/blockDim2.x, CHUNK_SIZE/blockDim2.y);
+    // kernel 3
+    gemm_smem_cache_blocking_v2_k<<<gridDim2, blockDim2>>>(d_A, d_B, d_C, ROW, COL, COL);
     cudaMemcpy(gpuResult, d_C, size, cudaMemcpyDeviceToHost);
-    printf("kernel 2: "); print_data(gpuResult, n);
-    
+    printf("kernel 3: "); print_data(gpuResult, n);
+
     // verify result
     //verify(h_C, gpuResult, n);
 
