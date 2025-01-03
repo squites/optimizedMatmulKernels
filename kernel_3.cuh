@@ -1,9 +1,6 @@
 #include <stdio.h>
 #include <iostream>
 
-
-//__device__ void load_smem();
-
 /*
 #define TILE_SIZE 32 // tile = 32x32 = 1024
 // A=(M,k), B=(k,N)
@@ -84,24 +81,23 @@ __global__ void gemm_smem_cache_blocking_v2_k(float *A, float *B, float *C,
     const int nchunks = k/CHUNK_SIZE;
     // while (chunk < nchunks) {
     for (int chunki = 0; chunki < nchunks; chunki++) { // (each thread will eventually load one element of each chunk)
-        // thread loads element of A and B chunks into SMEM. All threads are doing the same thing on different data at "same" time
+        // thread loads element of A and B chunks into SMEM. All threads are doing the same thing on different data at "same" time. So when they synchronize, the entire chunk of A and B will be on SMEM, which makes possible to perform the matmul on these tiles 
         A_shared[threadIdx.y * CHUNK_SIZE + threadIdx.x] = A_ptr[c_row * k + c_col]; 
         B_shared[threadIdx.y * CHUNK_SIZE + threadIdx.x] = B_ptr[c_row * n + c_col];
         __syncthreads();
 
         // barrier?
         // calculate dot-product (at this point, all threads of that block loaded the corresponded element of that chunk into shared, so we can already do matmul on this tile)
-        for (int i = 0; i < CHUNK_SIZE; i++) { // this loops to each 
+        for (int i = 0; i < CHUNK_SIZE; i++) { // this loops to each element of the row and col designated to that thread
             sum += A_shared[c_row * CHUNK_SIZE + i] * B_shared[i * n + c_col];
         }
-        //printf("sum: %.2f, ", sum);
         __syncthreads();
 
         // move pointers
-        // ...
+        A_ptr += CHUNK_SIZE; // position + 32. jumps to the start of the next tile of A of that thread block
+        B_ptr += CHUNK_SIZE * n; // 
     }
-    C_ptr[c_row * n + c_col] = sum;
-
+    C_ptr[c_row * n + c_col] = sum; // this needs to be outside because in order to calculate the specific element of the C tile, the thread needs to calculate the partial matmul of each A-B pair of tiles. So, sum on first iteration is matmul between 1st tile of A and B. Then, on next iteration, sum adds up the 2nd tile of A and B to the previous result
 }
 
 // OBS (IMPORTANTE): cada thread block, é responsável por um TILE da matrix C. Para calcular esse C tile, dentro de  
