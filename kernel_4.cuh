@@ -9,8 +9,8 @@ __global__ void gemm_1d_blocktiling_k(const float *A, const float *B, float *C, 
     const int BK = 8;
     const int TM = BM/BK; // BM/blockDim.y;
     // C thread global mapping
-    const int c_row = blockIdx.y * blockDim.y + threadIdx.y;
-    const int c_col = blockIdx.x * blockDim.x + threadIdx.x;
+    int c_row = blockIdx.y * blockDim.y + threadIdx.y;
+    int c_col = blockIdx.x * blockDim.x + threadIdx.x;
     // C tile mapping
     int trow = blockIdx.y;
     int tcol = blockIdx.x; 
@@ -38,13 +38,18 @@ __global__ void gemm_1d_blocktiling_k(const float *A, const float *B, float *C, 
             }
             // if TM == BK, we can load to B outside the inner loop
             // load the respective column with BK elements
-            // BK or BN in B_shared[...BN...]?
-            // 
-            B_shared[threadIdx.y * BK + threadIdx.x + i*BK] = B[c_row * n + c_col + ];
-            B_shared[threadIdx.x * BN + i] = B[c_row * n + c_col + i*n];
-            
+            B_shared[threadIdx.x * BK + i] = B[(c_row + i) * n + c_col];  
         }
         __syncthreads();
+
+        // dot product
+        for (int i = 0; i < BK; i++) {
+            float B_tmp = B_shared[i * BN + threadIdx.x]; // the author uses threadCol instead of threadIdx.x; Each iteration here, B_tmp will be one element from the column that's in B_shared
+            for (int res = 0; res < TM; res++) {    
+                // dotprod between each row from (TMxBK) with respective col (BK)
+                threadResults[res] += A_shared[res * BK + ] * B_tmp; // fix A_shareD indexing
+            }
+        }
 
     
     
