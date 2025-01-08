@@ -74,6 +74,17 @@ void verify(float *h_data, float *d_data, int N) {
     printf("Results match!\n");
 }
 */
+void compare_results(float *h_data, float *d_data, int N) {
+    float eps = 1e-5;
+    for (int i = 0; i < N; i++) {
+        if (fabs(h_data[i] - d_data[i]) > eps) {
+            printf("These numbers don't match: %f and %f.\n", h_data[i], d_data[i]);
+            printf("Error! The results don't match.\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+    printf("Results match!\n");
+}
 
 int main(int argc, char **argv) {
     // set device (needed?)
@@ -87,6 +98,7 @@ int main(int argc, char **argv) {
     float *h_B = (float*)malloc(size);
     float *h_C = (float*)malloc(size); 
     float *gpuResult = (float*)malloc(size);
+    float *gpuResult2 = (float*)malloc(size);
 
     // initialize matrices 
     randfloat(h_A, n, -50, 50);
@@ -95,9 +107,9 @@ int main(int argc, char **argv) {
     matmul_h(h_A, h_B, h_C, ROW, COL, COL);
 
     // debugging
-    printf("h_A: "); //print_data(h_A, n);
-    printf("h_B: "); //print_data(h_B, n);
-    printf("h_C: "); //print_data(h_C, n);
+    //printf("h_A: "); print_data(h_A, n);
+    //printf("h_B: "); print_data(h_B, n);
+    //printf("h_C: "); print_data(h_C, n);
 
     // allocate device memory for the matrices
     float *d_A, *d_B, *d_C;
@@ -120,19 +132,21 @@ int main(int argc, char **argv) {
     //printf("kernel 1: "); print_data(gpuResult, n);
 
     // kernel 2
-    //gemm_coalesced_k<<<gridDim, blockDim>>>(d_A, d_B, d_C, ROW, COL, COL);
-    //cudaMemcpy(gpuResult, d_C, size, cudaMemcpyDeviceToHost);
+    gemm_coalesced_k<<<gridDim, blockDim>>>(d_A, d_B, d_C, ROW, COL, COL);
+    cudaMemcpy(gpuResult2, d_C, size, cudaMemcpyDeviceToHost);
     //printf("kernel 2: "); print_data(gpuResult, n);
 
     dim3 const blockDim2(BLOCK_SIZE, BLOCK_SIZE); // 32x32
     dim3 const gridDim2((COL + BLOCK_SIZE - 1)/BLOCK_SIZE, (ROW + BLOCK_SIZE - 1)/BLOCK_SIZE);
+    
     // kernel 3
     gemm_smem_cache_blocking_v2_k<<<gridDim2, blockDim2>>>(d_A, d_B, d_C, ROW, COL, COL);
     cudaMemcpy(gpuResult, d_C, size, cudaMemcpyDeviceToHost);
-    printf("kernel 3: "); print_data(gpuResult, n);
+    //printf("kernel 3: "); print_data(gpuResult, n);
 
-    // verify result
-    //verify(h_C, gpuResult, n);
+    // verify results
+    //compare_results(h_C, gpuResult, n);
+    compare_results(gpuResult, gpuResult2, n);
 
     // free device memory
     cudaFree(d_A);

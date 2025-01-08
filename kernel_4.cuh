@@ -27,26 +27,23 @@ __global__ void gemm_1d_blocktiling_k(const float *A, const float *B, float *C, 
     int nchunks = k/BK;
     for (int ch = 0; ch < nchunks; ch++) { // loop through tiles
         float threadResults[TM]; // store all result of that thread (column of results per thread)
-        // load into smem
-        for (int i = 0; i < BK; i++) {
-            // + i: to load the next element of the column or row that the thread is loading 
-            // lets change it to each thread loads and entire BK column of the tile B, and all (TM,BK) tile A.
-            // A_shared[threadIdx.y * BK + threadIdx.x + i] = A[c_row * k + c_col + i];
-            // B_shared[threadIdx.y * BK + threadIdx.x + i] = B[c_row * n + c_col + (i * n + c_col)]; // n or BN
-            A_shared[threadIdx.y * BK + threadIdx.x] = A[c_row * k + c_col];
-            B_shared[threadIdx.y * BK + threadIdx.x] = B[c_row * n + c_col + (i * n + c_col)]; // loads all elements from this col?
-        }
-
-        // --- just experimenting!
-        int offset = 0;
-        for (int i = 0; i < BK; i++) {
-            for (int j = 0; j < TM; j++) {
-                A_shared[threadIdx.y * BK + threadIdx.x + offset] = A[c_row * k + c_col + i]; // load all elements from tile A (TM,BK)
-                offset++;
+        // load into SMEM
+        for (int i = 0; i < TM; i++) {
+            for (int j = 0; j < BK; j++) {
+                // load TMxBK block into smem
+                A_shared[threadIdx.y * BK + threadIdx.x + i*BK + j] = A[(c_row + i) * k + (c_col + j)];
+                // "threadIdx.y * BK + threadIdx.x": base unique index for each thread
+                // "i * BK": row offset. i iterates over TM rows that the thread is responsible for
+                // "+ j": col offset. iterates over the columns of BK 
             }
-            B_shared[threadIdx.y * BK + threadIdx.x + i] = B[c_row * n + c_col + (i * n + c_col)]; // load all elements from the tile column of B
+            // if TM == BK, we can load to B outside the inner loop
+            // load the respective column with BK elements
+            // BK or BN in B_shared[...BN...]?
+            // 
+            B_shared[threadIdx.y * BK + threadIdx.x + i*BK] = B[c_row * n + c_col + ];
+            B_shared[threadIdx.x * BN + i] = B[c_row * n + c_col + i*n];
+            
         }
-        // --- end experimenting!
         __syncthreads();
 
     
@@ -60,12 +57,17 @@ __global__ void gemm_1d_blocktiling_k(const float *A, const float *B, float *C, 
 OBS:
 - each thread block is responsible for calculating one tile of C
 - each thread is also responsible for loading multiple values into memory
+- each thread is responsible for load TM rows of BK,(TM,BK), elements from tile A(BM, BK). And load a single column
+of BK elements from tile B(BK, BN). So, load a block (TM,BK) from tileA, and load a column (BK,1) from tileB.
+- After the loading, each thread will be responsible for loading the necessary elements to calculate a column of
+tile C of TM elements. 
+Remember: each thread is supposed to compute a column (subcolumn more specific), of size (TM,1) elements. Is a
+subcolumn because the entire tile C will have size (BM,BN).
 
 Reminders:
 - global index calculation: tells which element each thread should handle in the matrix. The calculation is:
     crow = blockIdx.y * blockDim.y + threadIdx.y; // represent the 'y' coordinate on linear global memory
     ccol = blockIdx.x * blockDim.x + threadIdx.x; // represent the 'x' coordinate on linear global memory
-
     crow * width + ccol; // represent the [x,y] coordinates of that specific element on the linear global memory
 
 - shared memory index: tells the index within the shared memory that the thread(threadIdx.x, threadIdx.y) will load 
