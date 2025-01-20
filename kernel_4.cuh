@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
 
 // adds new inner loop for calculating multiple C entries per thread
 // each thread calculates a column of results of tile C (multiple results)
@@ -23,9 +24,11 @@ __global__ void gemm_1d_blocktiling_k(const float *A, const float *B, float *C, 
     float *B = B + tcol * BK; // points to 1st tile element of each tcol
     float *C = C + trow * (n * BK) + tcol * BK; // ?
 
+    assert(TM == BK);
+
     float sum = 0.0f;
     int nchunks = k/BK;
-    for (int ch = 0; ch < nchunks; ch++) { // loop through tiles
+    for (int chk = 0; chk < nchunks; chk++) { // loop through tiles
         float threadResults[TM]; // store all result of that thread (column of results per thread)
         // load into SMEM
         for (int i = 0; i < TM; i++) {
@@ -51,18 +54,56 @@ __global__ void gemm_1d_blocktiling_k(const float *A, const float *B, float *C, 
             }
         }
 
-    
-    
         // move pointers
         //...
     }
 }
 
+/* ------------------------- rewriting -------------------------*/
+__global__ void gemm_1d_blocktiling_k(const float *A, const float *B, float *C, size_t m, size_t n, size_t k) {
+    //tile dims
+    const int BM = 64, BN = 64;
+    const int BK = 8;
+    int TM = BM/BK;
+    // C thread global mapping
+    int crow = blockIdx.y * blockDim.y + threadIdx.y;
+    int ccol = blockIdx.x * blockDim.x + threadIdx.x;
+    // C tile mapping
+    int trow = blockIdx.y;
+    int tcol = blockIdx.x;
+    // allocate SMEM
+    __shared__ float A_shared[BM * BK]; // (64x8)
+    __shared__ float B_shared[BK * BN]; // (8x64)
+
+    // pointers
+    A_ptr = A + trow * k * BM; // BM or BK ?
+    B_ptr = B + tcol * BN;     // BN or BK ?
+
+    // THE LOADING INTO SMEM IS WRONG ON THE PREVIOUS IMPLEMENTATION!
+    // Apperently each thread loads only one element of tileA and one from tileB.
+    float sum = 0.0f;
+    int nchunks = k/BK;
+    for (int chk = 0; chk < nchunks; chk++) {
+        // each thread load one element into smem
+        A_shared[threadIdx.y * BK + threadIdx.x] = A[crow * k + ccol];
+        B_shared[threadIdx.y * BN + threadIdx.x] = B[crow * n + ccol];
+        __syncthreads();
+
+        for (int i = 0; i < TM; i++) {
+            for (int j = 0; j < BK; j++) {
+                
+            }
+        }
+    }
+
+
+}
+
 /*
 OBS:
 - each thread block is responsible for calculating one tile of C
-- each thread is also responsible for loading multiple values into memory
-- each thread is responsible for load TM rows of BK,(TM,BK), elements from tile A(BM, BK). And load a single column
+- (?) each thread is also responsible for loading multiple values into memory
+- (?) each thread is responsible for load TM rows of BK,(TM,BK), elements from tile A(BM, BK). And load a single column
 of BK elements from tile B(BK, BN). So, load a block (TM,BK) from tileA, and load a column (BK,1) from tileB.
 - After the loading, each thread will be responsible for loading the necessary elements to calculate a column of
 tile C of TM elements. 
